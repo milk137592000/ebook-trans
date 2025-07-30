@@ -158,15 +158,23 @@ class EpubConverter {
             const epubData = await zip.loadAsync(this.selectedFile);
             this.updateProgress(30, '正在解析檔案結構...');
 
-            // 處理 EPUB 內容
-            const processedZip = await this.processEpubContent(epubData);
-            this.updateProgress(80, '正在生成轉換後的檔案...');
+            // 根據選擇的格式進行處理
+            let convertedBlob;
 
-            // 生成新的 EPUB 檔案
-            const convertedBlob = await processedZip.generateAsync({
-                type: 'blob',
-                mimeType: 'application/epub+zip'
-            });
+            if (this.selectedFormat === 'md') {
+                // Markdown 格式處理
+                this.updateProgress(50, '正在轉換為 Markdown 格式...');
+                convertedBlob = await this.convertToMarkdown(epubData);
+            } else {
+                // EPUB 格式處理
+                const processedZip = await this.processEpubContent(epubData);
+                this.updateProgress(80, '正在生成轉換後的檔案...');
+
+                convertedBlob = await processedZip.generateAsync({
+                    type: 'blob',
+                    mimeType: 'application/epub+zip'
+                });
+            }
 
             this.convertedBlob = convertedBlob;
             this.updateProgress(100, '轉換完成！');
@@ -404,6 +412,170 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
         return content;
     }
 
+    async convertToMarkdown(zip) {
+        this.updateProgress(60, '正在提取文字內容...');
+
+        let markdownContent = '';
+        let title = '轉換的電子書';
+
+        // 提取書籍標題
+        try {
+            const opfFile = await this.findOpfFile(zip);
+            if (opfFile) {
+                const opfContent = await zip.file(opfFile).async('text');
+                const titleMatch = opfContent.match(/<dc:title[^>]*>([^<]+)<\/dc:title>/i);
+                if (titleMatch) {
+                    title = titleMatch[1].trim();
+                }
+            }
+        } catch (error) {
+            console.warn('無法提取標題:', error);
+        }
+
+        // 添加標題
+        markdownContent += `# ${title}\n\n`;
+        markdownContent += `> 由 EPUB 轉換器轉換為 Markdown 格式\n\n`;
+        markdownContent += `---\n\n`;
+
+        this.updateProgress(70, '正在處理章節內容...');
+
+        // 處理所有 HTML/XHTML 檔案
+        const htmlFiles = [];
+        zip.forEach((relativePath, file) => {
+            if (!file.dir && (relativePath.toLowerCase().endsWith('.html') || relativePath.toLowerCase().endsWith('.xhtml'))) {
+                htmlFiles.push(relativePath);
+            }
+        });
+
+        // 按檔案名排序
+        htmlFiles.sort();
+
+        for (let i = 0; i < htmlFiles.length; i++) {
+            const filePath = htmlFiles[i];
+            this.updateProgress(70 + (i / htmlFiles.length) * 15, `正在處理章節 ${i + 1}/${htmlFiles.length}...`);
+
+            try {
+                const htmlContent = await zip.file(filePath).async('text');
+                const processedHtml = await this.processHtmlContent(htmlContent);
+                const markdown = this.htmlToMarkdown(processedHtml);
+
+                if (markdown.trim()) {
+                    markdownContent += `## 章節 ${i + 1}\n\n`;
+                    markdownContent += markdown + '\n\n';
+                    markdownContent += `---\n\n`;
+                }
+            } catch (error) {
+                console.warn(`處理檔案 ${filePath} 時發生錯誤:`, error);
+            }
+        }
+
+        // 添加結尾
+        markdownContent += `\n\n*轉換完成時間: ${new Date().toLocaleString('zh-TW')}*\n`;
+
+        // 建立 Markdown 檔案 Blob
+        const blob = new Blob([markdownContent], { type: 'text/markdown; charset=utf-8' });
+        return blob;
+    }
+
+    async findOpfFile(zip) {
+        // 查找 container.xml 來找到 OPF 檔案
+        try {
+            const containerFile = zip.file('META-INF/container.xml');
+            if (containerFile) {
+                const containerContent = await containerFile.async('text');
+                const opfMatch = containerContent.match(/full-path="([^"]+\.opf)"/i);
+                if (opfMatch) {
+                    return opfMatch[1];
+                }
+            }
+        } catch (error) {
+            console.warn('無法找到 OPF 檔案:', error);
+        }
+
+        // 備用方法：直接查找 .opf 檔案
+        let opfFile = null;
+        zip.forEach((relativePath, file) => {
+            if (!file.dir && relativePath.toLowerCase().endsWith('.opf')) {
+                opfFile = relativePath;
+            }
+        });
+
+        return opfFile;
+    }
+
+    htmlToMarkdown(html) {
+        // 簡單的 HTML 到 Markdown 轉換
+        let markdown = html;
+
+        // 移除 HTML 標籤但保留內容
+        markdown = markdown.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+        markdown = markdown.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+        markdown = markdown.replace(/<!--[\s\S]*?-->/g, '');
+
+        // 轉換標題
+        markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n');
+        markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n');
+        markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n');
+        markdown = markdown.replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n\n');
+        markdown = markdown.replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n\n');
+        markdown = markdown.replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n\n');
+
+        // 轉換段落
+        markdown = markdown.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
+
+        // 轉換換行
+        markdown = markdown.replace(/<br\s*\/?>/gi, '\n');
+
+        // 轉換粗體和斜體
+        markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**');
+        markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**');
+        markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*');
+        markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*');
+
+        // 轉換連結
+        markdown = markdown.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)');
+
+        // 轉換圖片
+        markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, '![$2]($1)');
+        markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '![]($1)');
+
+        // 轉換列表
+        markdown = markdown.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (match, content) => {
+            return content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
+        });
+
+        markdown = markdown.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (match, content) => {
+            let counter = 1;
+            return content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => {
+                return `${counter++}. $1\n`;
+            });
+        });
+
+        // 轉換引用
+        markdown = markdown.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n\n');
+
+        // 轉換代碼
+        markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
+        markdown = markdown.replace(/<pre[^>]*>(.*?)<\/pre>/gi, '```\n$1\n```\n\n');
+
+        // 移除剩餘的 HTML 標籤
+        markdown = markdown.replace(/<[^>]+>/g, '');
+
+        // 解碼 HTML 實體
+        markdown = markdown.replace(/&nbsp;/g, ' ');
+        markdown = markdown.replace(/&amp;/g, '&');
+        markdown = markdown.replace(/&lt;/g, '<');
+        markdown = markdown.replace(/&gt;/g, '>');
+        markdown = markdown.replace(/&quot;/g, '"');
+        markdown = markdown.replace(/&#39;/g, "'");
+
+        // 清理多餘的空行
+        markdown = markdown.replace(/\n\s*\n\s*\n/g, '\n\n');
+        markdown = markdown.trim();
+
+        return markdown;
+    }
+
     showProgress(show) {
         if (show) {
             this.progressSection.style.display = 'block';
@@ -424,10 +596,32 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
         this.resultSection.style.display = 'block';
 
         const originalName = this.selectedFile.name.replace('.epub', '');
-        const newFileName = `${originalName}_轉換完成.${this.selectedFormat}`;
+        let newFileName, formatDisplay;
+
+        switch (this.selectedFormat) {
+            case 'md':
+                newFileName = `${originalName}_轉換完成.md`;
+                formatDisplay = 'Markdown';
+                break;
+            case 'epub':
+                newFileName = `${originalName}_轉換完成.epub`;
+                formatDisplay = 'EPUB';
+                break;
+            case 'mobi':
+                newFileName = `${originalName}_轉換完成.mobi`;
+                formatDisplay = 'MOBI';
+                break;
+            case 'pdf':
+                newFileName = `${originalName}_轉換完成.pdf`;
+                formatDisplay = 'PDF';
+                break;
+            default:
+                newFileName = `${originalName}_轉換完成.${this.selectedFormat}`;
+                formatDisplay = this.selectedFormat.toUpperCase();
+        }
 
         this.resultFileName.textContent = newFileName;
-        this.resultInfo.textContent = `格式：${this.selectedFormat.toUpperCase()} | 行距：${this.selectedLineHeight} | 大小：${this.formatFileSize(this.convertedBlob.size)}`;
+        this.resultInfo.textContent = `格式：${formatDisplay} | 行距：${this.selectedLineHeight} | 大小：${this.formatFileSize(this.convertedBlob.size)}`;
 
         // 滾動到結果區域
         this.resultSection.scrollIntoView({ behavior: 'smooth' });
@@ -440,7 +634,25 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
         }
 
         const originalName = this.selectedFile.name.replace('.epub', '');
-        const fileName = `${originalName}_轉換完成.${this.selectedFormat}`;
+        let fileName;
+
+        // 根據格式設定檔案名和副檔名
+        switch (this.selectedFormat) {
+            case 'md':
+                fileName = `${originalName}_轉換完成.md`;
+                break;
+            case 'epub':
+                fileName = `${originalName}_轉換完成.epub`;
+                break;
+            case 'mobi':
+                fileName = `${originalName}_轉換完成.mobi`;
+                break;
+            case 'pdf':
+                fileName = `${originalName}_轉換完成.pdf`;
+                break;
+            default:
+                fileName = `${originalName}_轉換完成.${this.selectedFormat}`;
+        }
 
         const url = URL.createObjectURL(this.convertedBlob);
         const a = document.createElement('a');
