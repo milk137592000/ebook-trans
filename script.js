@@ -5,10 +5,12 @@ class EpubConverter {
         this.selectedFormat = 'epub';
         this.selectedLineHeight = '1.2';
         this.convertedBlob = null;
-        
+        this.inputFileType = null; // 'epub' or 'pdf'
+
         this.initializeElements();
         this.bindEvents();
         this.updateUI();
+        this.initializePdfJs();
     }
 
     initializeElements() {
@@ -69,12 +71,13 @@ class EpubConverter {
 
     handleFileSelect(event) {
         const file = event.target.files[0];
-        if (file && file.name.toLowerCase().endsWith('.epub')) {
+        if (file && this.isValidFile(file)) {
             this.selectedFile = file;
+            this.inputFileType = this.getFileType(file);
             this.showFileInfo();
             this.updateUI();
         } else {
-            this.showAlert('錯誤', '請選擇 .epub 格式的檔案');
+            this.showAlert('錯誤', '請選擇 .epub 或 .pdf 格式的檔案');
         }
     }
 
@@ -95,12 +98,13 @@ class EpubConverter {
         const files = event.dataTransfer.files;
         if (files.length > 0) {
             const file = files[0];
-            if (file.name.toLowerCase().endsWith('.epub')) {
+            if (this.isValidFile(file)) {
                 this.selectedFile = file;
+                this.inputFileType = this.getFileType(file);
                 this.showFileInfo();
                 this.updateUI();
             } else {
-                this.showAlert('錯誤', '請選擇 .epub 格式的檔案');
+                this.showAlert('錯誤', '請選擇 .epub 或 .pdf 格式的檔案');
             }
         }
     }
@@ -132,48 +136,81 @@ class EpubConverter {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
+    isValidFile(file) {
+        const fileName = file.name.toLowerCase();
+        return fileName.endsWith('.epub') || fileName.endsWith('.pdf');
+    }
+
+    getFileType(file) {
+        const fileName = file.name.toLowerCase();
+        if (fileName.endsWith('.epub')) return 'epub';
+        if (fileName.endsWith('.pdf')) return 'pdf';
+        return null;
+    }
+
+    initializePdfJs() {
+        // 設定 PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    }
+
     updateUI() {
         if (this.selectedFile) {
-            this.statusText.textContent = `已選擇：${this.selectedFile.name} | 格式：${this.selectedFormat.toUpperCase()} | 行距：${this.selectedLineHeight}`;
+            const fileTypeDisplay = this.inputFileType ? this.inputFileType.toUpperCase() : 'UNKNOWN';
+            this.statusText.textContent = `已選擇：${this.selectedFile.name} (${fileTypeDisplay}) | 輸出格式：${this.selectedFormat.toUpperCase()} | 行距：${this.selectedLineHeight}`;
             this.convertBtn.disabled = false;
         } else {
-            this.statusText.textContent = '請先選擇 EPUB 檔案';
+            this.statusText.textContent = '請先選擇 EPUB 或 PDF 檔案';
             this.convertBtn.disabled = true;
         }
     }
 
     async startConversion() {
         if (!this.selectedFile) {
-            this.showAlert('錯誤', '請先選擇 EPUB 檔案');
+            this.showAlert('錯誤', '請先選擇檔案');
             return;
         }
 
         try {
             this.showProgress(true);
             this.convertBtn.disabled = true;
-            this.updateProgress(10, '正在讀取 EPUB 檔案...');
 
-            // 讀取 EPUB 檔案
-            const zip = new JSZip();
-            const epubData = await zip.loadAsync(this.selectedFile);
-            this.updateProgress(30, '正在解析檔案結構...');
-
-            // 根據選擇的格式進行處理
             let convertedBlob;
 
-            if (this.selectedFormat === 'md') {
-                // Markdown 格式處理
-                this.updateProgress(50, '正在轉換為 Markdown 格式...');
-                convertedBlob = await this.convertToMarkdown(epubData);
-            } else {
-                // EPUB 格式處理
-                const processedZip = await this.processEpubContent(epubData);
-                this.updateProgress(80, '正在生成轉換後的檔案...');
+            if (this.inputFileType === 'pdf') {
+                // PDF 檔案處理
+                this.updateProgress(10, '正在讀取 PDF 檔案...');
+                const pdfData = await this.extractTextFromPdf(this.selectedFile);
 
-                convertedBlob = await processedZip.generateAsync({
-                    type: 'blob',
-                    mimeType: 'application/epub+zip'
-                });
+                if (this.selectedFormat === 'md') {
+                    this.updateProgress(70, '正在轉換為 Markdown 格式...');
+                    convertedBlob = await this.convertPdfToMarkdown(pdfData);
+                } else {
+                    this.updateProgress(70, '正在轉換為 EPUB 格式...');
+                    convertedBlob = await this.convertPdfToEpub(pdfData);
+                }
+            } else {
+                // EPUB 檔案處理
+                this.updateProgress(10, '正在讀取 EPUB 檔案...');
+                const zip = new JSZip();
+                const epubData = await zip.loadAsync(this.selectedFile);
+                this.updateProgress(30, '正在解析檔案結構...');
+
+                if (this.selectedFormat === 'md') {
+                    // Markdown 格式處理
+                    this.updateProgress(50, '正在轉換為 Markdown 格式...');
+                    convertedBlob = await this.convertToMarkdown(epubData);
+                } else {
+                    // EPUB 格式處理
+                    const processedZip = await this.processEpubContent(epubData);
+                    this.updateProgress(80, '正在生成轉換後的檔案...');
+
+                    convertedBlob = await processedZip.generateAsync({
+                        type: 'blob',
+                        mimeType: 'application/epub+zip'
+                    });
+                }
             }
 
             this.convertedBlob = convertedBlob;
@@ -235,6 +272,287 @@ class EpubConverter {
         }
 
         return processedZip;
+    }
+
+    async extractTextFromPdf(file) {
+        this.updateProgress(20, '正在解析 PDF 結構...');
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+            const pdfData = {
+                title: file.name.replace('.pdf', ''),
+                author: '',
+                pages: [],
+                totalPages: pdf.numPages
+            };
+
+            this.updateProgress(30, '正在提取文字內容...');
+
+            // 提取每一頁的文字
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                this.updateProgress(30 + (pageNum / pdf.numPages) * 30, `正在處理第 ${pageNum}/${pdf.numPages} 頁...`);
+
+                const page = await pdf.getPage(pageNum);
+                const textContent = await page.getTextContent();
+
+                let pageText = '';
+                let lastY = null;
+                let currentLine = '';
+
+                // 重建文字結構
+                textContent.items.forEach(item => {
+                    const currentY = item.transform[5];
+
+                    // 如果 Y 座標變化，表示新的一行
+                    if (lastY !== null && Math.abs(currentY - lastY) > 5) {
+                        if (currentLine.trim()) {
+                            pageText += currentLine.trim() + '\n';
+                        }
+                        currentLine = '';
+                    }
+
+                    currentLine += item.str + ' ';
+                    lastY = currentY;
+                });
+
+                // 添加最後一行
+                if (currentLine.trim()) {
+                    pageText += currentLine.trim() + '\n';
+                }
+
+                pdfData.pages.push({
+                    pageNumber: pageNum,
+                    text: pageText.trim()
+                });
+            }
+
+            // 嘗試提取元資料
+            try {
+                const metadata = await pdf.getMetadata();
+                if (metadata.info.Title) {
+                    pdfData.title = metadata.info.Title;
+                }
+                if (metadata.info.Author) {
+                    pdfData.author = metadata.info.Author;
+                }
+            } catch (metaError) {
+                console.warn('無法提取 PDF 元資料:', metaError);
+            }
+
+            this.updateProgress(60, 'PDF 文字提取完成...');
+            return pdfData;
+
+        } catch (error) {
+            throw new Error(`PDF 解析失敗: ${error.message}`);
+        }
+    }
+
+    async convertPdfToMarkdown(pdfData) {
+        this.updateProgress(70, '正在轉換為 Markdown 格式...');
+
+        let markdownContent = '';
+
+        // 建立文件標頭
+        markdownContent += `# ${pdfData.title}\n\n`;
+
+        if (pdfData.author) {
+            markdownContent += `**作者**: ${pdfData.author}\n\n`;
+        }
+
+        markdownContent += `**轉換時間**: ${new Date().toLocaleString('zh-TW')}\n\n`;
+        markdownContent += `**轉換工具**: EPUB 轉換器 - 網頁版\n\n`;
+        markdownContent += `**原始格式**: PDF\n\n`;
+        markdownContent += `**總頁數**: ${pdfData.totalPages}\n\n`;
+        markdownContent += `---\n\n`;
+
+        // 添加目錄
+        markdownContent += `## 📚 目錄\n\n`;
+        pdfData.pages.forEach((page, index) => {
+            markdownContent += `${index + 1}. [第 ${page.pageNumber} 頁](#第-${page.pageNumber}-頁)\n`;
+        });
+        markdownContent += `\n---\n\n`;
+
+        this.updateProgress(80, '正在處理頁面內容...');
+
+        // 處理每一頁
+        pdfData.pages.forEach((page, index) => {
+            this.updateProgress(80 + (index / pdfData.pages.length) * 15, `正在處理第 ${page.pageNumber} 頁...`);
+
+            if (page.text.trim()) {
+                markdownContent += `## 第 ${page.pageNumber} 頁\n\n`;
+
+                // 處理文字內容
+                let processedText = page.text;
+
+                // 簡繁轉換
+                if (typeof OpenCC !== 'undefined') {
+                    try {
+                        const converter = OpenCC.Converter({ from: 'cn', to: 'tw' });
+                        processedText = converter(processedText);
+                    } catch (error) {
+                        processedText = this.basicSimplifiedToTraditional(processedText);
+                    }
+                } else {
+                    processedText = this.basicSimplifiedToTraditional(processedText);
+                }
+
+                // 改善段落結構
+                const paragraphs = processedText.split('\n').filter(line => line.trim());
+                paragraphs.forEach(paragraph => {
+                    if (paragraph.trim()) {
+                        markdownContent += `${paragraph.trim()}\n\n`;
+                    }
+                });
+
+                if (index < pdfData.pages.length - 1) {
+                    markdownContent += `---\n\n`;
+                }
+            }
+        });
+
+        // 添加結尾
+        markdownContent += `\n\n---\n\n`;
+        markdownContent += `## 📄 轉換資訊\n\n`;
+        markdownContent += `- **原始格式**: PDF\n`;
+        markdownContent += `- **轉換格式**: Markdown\n`;
+        markdownContent += `- **總頁數**: ${pdfData.totalPages}\n`;
+        markdownContent += `- **轉換功能**: 簡體→正體\n`;
+        markdownContent += `- **轉換完成**: ${new Date().toLocaleString('zh-TW')}\n\n`;
+        markdownContent += `*由 [EPUB 轉換器](https://milk137592000.github.io/ebook-trans) 轉換*\n`;
+
+        // 建立 Markdown 檔案 Blob
+        const blob = new Blob([markdownContent], { type: 'text/markdown; charset=utf-8' });
+        return blob;
+    }
+
+    async convertPdfToEpub(pdfData) {
+        this.updateProgress(70, '正在轉換為 EPUB 格式...');
+
+        const zip = new JSZip();
+
+        // 建立 EPUB 結構
+        zip.file('mimetype', 'application/epub+zip');
+
+        // META-INF/container.xml
+        const containerXml = `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>`;
+        zip.file('META-INF/container.xml', containerXml);
+
+        // OEBPS/content.opf
+        const contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
+    <metadata>
+        <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">${pdfData.title}</dc:title>
+        <dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">${pdfData.author || '未知作者'}</dc:creator>
+        <dc:identifier id="BookId" xmlns:dc="http://purl.org/dc/elements/1.1/">pdf-converted-${Date.now()}</dc:identifier>
+        <dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">zh-TW</dc:language>
+    </metadata>
+    <manifest>
+        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+        ${pdfData.pages.map((page, index) =>
+            `<item id="page${index + 1}" href="page${index + 1}.xhtml" media-type="application/xhtml+xml"/>`
+        ).join('\n        ')}
+    </manifest>
+    <spine toc="ncx">
+        ${pdfData.pages.map((page, index) =>
+            `<itemref idref="page${index + 1}"/>`
+        ).join('\n        ')}
+    </spine>
+</package>`;
+        zip.file('OEBPS/content.opf', contentOpf);
+
+        // OEBPS/toc.ncx
+        const tocNcx = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+    <head>
+        <meta name="dtb:uid" content="pdf-converted-${Date.now()}"/>
+    </head>
+    <docTitle>
+        <text>${pdfData.title}</text>
+    </docTitle>
+    <navMap>
+        ${pdfData.pages.map((page, index) =>
+            `<navPoint id="navpoint-${index + 1}" playOrder="${index + 1}">
+            <navLabel>
+                <text>第 ${page.pageNumber} 頁</text>
+            </navLabel>
+            <content src="page${index + 1}.xhtml"/>
+        </navPoint>`
+        ).join('\n        ')}
+    </navMap>
+</ncx>`;
+        zip.file('OEBPS/toc.ncx', tocNcx);
+
+        this.updateProgress(85, '正在生成 EPUB 頁面...');
+
+        // 建立每一頁的 XHTML 檔案
+        pdfData.pages.forEach((page, index) => {
+            this.updateProgress(85 + (index / pdfData.pages.length) * 10, `正在生成第 ${page.pageNumber} 頁...`);
+
+            let processedText = page.text;
+
+            // 簡繁轉換
+            if (typeof OpenCC !== 'undefined') {
+                try {
+                    const converter = OpenCC.Converter({ from: 'cn', to: 'tw' });
+                    processedText = converter(processedText);
+                } catch (error) {
+                    processedText = this.basicSimplifiedToTraditional(processedText);
+                }
+            } else {
+                processedText = this.basicSimplifiedToTraditional(processedText);
+            }
+
+            // 轉換為 HTML 段落
+            const paragraphs = processedText.split('\n')
+                .filter(line => line.trim())
+                .map(line => `<p>${line.trim()}</p>`)
+                .join('\n        ');
+
+            const pageXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>第 ${page.pageNumber} 頁</title>
+    <meta charset="UTF-8"/>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", "微軟正黑體", "PingFang TC", "Helvetica Neue", Arial, sans-serif;
+            line-height: ${this.selectedLineHeight};
+            writing-mode: horizontal-tb;
+            direction: ltr;
+            margin: 1em;
+        }
+        p {
+            margin: 1em 0;
+            line-height: ${this.selectedLineHeight};
+        }
+    </style>
+</head>
+<body>
+    <h1>第 ${page.pageNumber} 頁</h1>
+    ${paragraphs}
+</body>
+</html>`;
+
+            zip.file(`OEBPS/page${index + 1}.xhtml`, pageXhtml);
+        });
+
+        this.updateProgress(95, '正在生成 EPUB 檔案...');
+
+        // 生成 EPUB 檔案
+        const blob = await zip.generateAsync({
+            type: 'blob',
+            mimeType: 'application/epub+zip'
+        });
+
+        return blob;
     }
 
     async processHtmlContent(htmlContent) {
@@ -866,7 +1184,8 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
         this.showProgress(false);
         this.resultSection.style.display = 'block';
 
-        const originalName = this.selectedFile.name.replace('.epub', '');
+        // 移除原檔案的副檔名
+        const originalName = this.selectedFile.name.replace(/\.(epub|pdf)$/i, '');
         let newFileName, formatDisplay;
 
         switch (this.selectedFormat) {
@@ -904,7 +1223,8 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
             return;
         }
 
-        const originalName = this.selectedFile.name.replace('.epub', '');
+        // 移除原檔案的副檔名
+        const originalName = this.selectedFile.name.replace(/\.(epub|pdf)$/i, '');
         let fileName;
 
         // 根據格式設定檔案名和副檔名

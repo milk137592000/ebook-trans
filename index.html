@@ -13,7 +13,7 @@
         <header class="header">
             <div class="title-section">
                 <h1 class="title">📚 EPUB 轉換器</h1>
-                <p class="subtitle">將 EPUB 檔案從直式轉換為橫式，簡體轉正體，並更改為微軟正黑體</p>
+                <p class="subtitle">將 EPUB/PDF 檔案轉換為橫式閱讀，簡體轉正體，並更改為微軟正黑體</p>
                 <p class="flow-description">步驟：選擇檔案 → 設定格式 → 開始轉換</p>
             </div>
         </header>
@@ -22,15 +22,15 @@
         <main class="main-content">
             <!-- 步驟 1: 檔案選擇 -->
             <section class="step-section" id="step1">
-                <h2 class="step-title">📁 步驟 1: 選擇 EPUB 檔案</h2>
+                <h2 class="step-title">📁 步驟 1: 選擇 EPUB 或 PDF 檔案</h2>
                 
                 <div class="file-upload-area" id="dropZone">
                     <div class="upload-content">
                         <div class="upload-icon">📚</div>
-                        <p class="upload-text">拖放 EPUB 檔案到這裡</p>
+                        <p class="upload-text">拖放 EPUB 或 PDF 檔案到這裡</p>
                         <p class="upload-subtext">或</p>
-                        <button class="upload-button" id="fileSelectBtn">選擇 EPUB 檔案</button>
-                        <input type="file" id="fileInput" accept=".epub" style="display: none;">
+                        <button class="upload-button" id="fileSelectBtn">選擇 EPUB/PDF 檔案</button>
+                        <input type="file" id="fileInput" accept=".epub,.pdf" style="display: none;">
                     </div>
                 </div>
 
@@ -130,7 +130,7 @@
         <footer class="footer">
             <div class="features-info">
                 <p class="features-text">
-                    轉換功能：直式→橫式 | 簡體→正體 | 字體→微軟正黑體 | 自訂行距 | 多格式輸出 (EPUB/Markdown)
+                    轉換功能：直式→橫式 | 簡體→正體 | 字體→微軟正黑體 | 自訂行距 | 多格式輸出 (EPUB/PDF/Markdown)
                 </p>
                 <p class="tech-info">
                     網頁版使用 JavaScript 進行客戶端處理，保護您的隱私
@@ -142,6 +142,7 @@
     <!-- 載入必要的 JavaScript 庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/opencc-js/1.0.5/opencc.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
