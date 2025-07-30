@@ -417,30 +417,50 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
 
         let markdownContent = '';
         let title = '轉換的電子書';
+        let author = '';
 
-        // 提取書籍標題
+        // 提取書籍元資料
         try {
             const opfFile = await this.findOpfFile(zip);
             if (opfFile) {
                 const opfContent = await zip.file(opfFile).async('text');
+
+                // 提取標題
                 const titleMatch = opfContent.match(/<dc:title[^>]*>([^<]+)<\/dc:title>/i);
                 if (titleMatch) {
                     title = titleMatch[1].trim();
                 }
+
+                // 提取作者
+                const authorMatch = opfContent.match(/<dc:creator[^>]*>([^<]+)<\/dc:creator>/i);
+                if (authorMatch) {
+                    author = authorMatch[1].trim();
+                }
             }
         } catch (error) {
-            console.warn('無法提取標題:', error);
+            console.warn('無法提取元資料:', error);
         }
 
-        // 添加標題
+        // 建立文件標頭
         markdownContent += `# ${title}\n\n`;
-        markdownContent += `> 由 EPUB 轉換器轉換為 Markdown 格式\n\n`;
+
+        if (author) {
+            markdownContent += `**作者**: ${author}\n\n`;
+        }
+
+        markdownContent += `**轉換時間**: ${new Date().toLocaleString('zh-TW')}\n\n`;
+        markdownContent += `**轉換工具**: EPUB 轉換器 - 網頁版\n\n`;
         markdownContent += `---\n\n`;
 
-        this.updateProgress(70, '正在處理章節內容...');
+        // 添加目錄
+        markdownContent += `## 📚 目錄\n\n`;
 
-        // 處理所有 HTML/XHTML 檔案
+        this.updateProgress(65, '正在分析章節結構...');
+
+        // 處理所有 HTML/XHTML 檔案並提取章節資訊
         const htmlFiles = [];
+        const chapterInfo = [];
+
         zip.forEach((relativePath, file) => {
             if (!file.dir && (relativePath.toLowerCase().endsWith('.html') || relativePath.toLowerCase().endsWith('.xhtml'))) {
                 htmlFiles.push(relativePath);
@@ -450,27 +470,78 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
         // 按檔案名排序
         htmlFiles.sort();
 
+        // 預處理：提取章節標題
         for (let i = 0; i < htmlFiles.length; i++) {
             const filePath = htmlFiles[i];
-            this.updateProgress(70 + (i / htmlFiles.length) * 15, `正在處理章節 ${i + 1}/${htmlFiles.length}...`);
-
             try {
                 const htmlContent = await zip.file(filePath).async('text');
+                const chapterTitle = this.extractChapterTitle(htmlContent) || `章節 ${i + 1}`;
+                chapterInfo.push({
+                    path: filePath,
+                    title: chapterTitle,
+                    index: i + 1
+                });
+            } catch (error) {
+                console.warn(`分析檔案 ${filePath} 時發生錯誤:`, error);
+                chapterInfo.push({
+                    path: filePath,
+                    title: `章節 ${i + 1}`,
+                    index: i + 1
+                });
+            }
+        }
+
+        // 生成目錄
+        chapterInfo.forEach((chapter, index) => {
+            const anchor = this.generateAnchor(chapter.title);
+            markdownContent += `${index + 1}. [${chapter.title}](#${anchor})\n`;
+        });
+
+        markdownContent += `\n---\n\n`;
+
+        this.updateProgress(70, '正在處理章節內容...');
+
+        // 處理每個章節
+        for (let i = 0; i < chapterInfo.length; i++) {
+            const chapter = chapterInfo[i];
+            this.updateProgress(70 + (i / chapterInfo.length) * 25, `正在處理 ${chapter.title}...`);
+
+            try {
+                const htmlContent = await zip.file(chapter.path).async('text');
                 const processedHtml = await this.processHtmlContent(htmlContent);
                 const markdown = this.htmlToMarkdown(processedHtml);
 
                 if (markdown.trim()) {
-                    markdownContent += `## 章節 ${i + 1}\n\n`;
-                    markdownContent += markdown + '\n\n';
-                    markdownContent += `---\n\n`;
+                    // 章節標題
+                    markdownContent += `## ${chapter.title}\n\n`;
+
+                    // 章節內容
+                    const structuredContent = this.structureChapterContent(markdown);
+                    markdownContent += structuredContent + '\n\n';
+
+                    // 章節分隔
+                    if (i < chapterInfo.length - 1) {
+                        markdownContent += `---\n\n`;
+                    }
                 }
             } catch (error) {
-                console.warn(`處理檔案 ${filePath} 時發生錯誤:`, error);
+                console.warn(`處理檔案 ${chapter.path} 時發生錯誤:`, error);
+                markdownContent += `## ${chapter.title}\n\n`;
+                markdownContent += `*此章節處理時發生錯誤*\n\n`;
+                markdownContent += `---\n\n`;
             }
         }
 
         // 添加結尾
-        markdownContent += `\n\n*轉換完成時間: ${new Date().toLocaleString('zh-TW')}*\n`;
+        markdownContent += `\n\n---\n\n`;
+        markdownContent += `## 📄 轉換資訊\n\n`;
+        markdownContent += `- **原始格式**: EPUB\n`;
+        markdownContent += `- **轉換格式**: Markdown\n`;
+        markdownContent += `- **章節數量**: ${chapterInfo.length}\n`;
+        markdownContent += `- **轉換功能**: 直式→橫式 | 簡體→正體 | 字體→微軟正黑體\n`;
+        markdownContent += `- **行距設定**: ${this.selectedLineHeight}\n`;
+        markdownContent += `- **轉換完成**: ${new Date().toLocaleString('zh-TW')}\n\n`;
+        markdownContent += `*由 [EPUB 轉換器](https://milk137592000.github.io/ebook-trans) 轉換*\n`;
 
         // 建立 Markdown 檔案 Blob
         const blob = new Blob([markdownContent], { type: 'text/markdown; charset=utf-8' });
@@ -503,74 +574,274 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
         return opfFile;
     }
 
+    extractChapterTitle(html) {
+        // 嘗試從 HTML 中提取章節標題
+        const titlePatterns = [
+            /<title[^>]*>([^<]+)<\/title>/i,
+            /<h1[^>]*>([^<]+)<\/h1>/i,
+            /<h2[^>]*>([^<]+)<\/h2>/i,
+            /<h3[^>]*>([^<]+)<\/h3>/i,
+            /<div[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/div>/i,
+            /<p[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/p>/i
+        ];
+
+        for (const pattern of titlePatterns) {
+            const match = html.match(pattern);
+            if (match && match[1].trim()) {
+                let title = match[1].trim();
+                // 清理 HTML 標籤
+                title = title.replace(/<[^>]+>/g, '');
+                // 清理 HTML 實體
+                title = this.decodeHtmlEntities(title);
+                // 如果標題太長，截取前50個字符
+                if (title.length > 50) {
+                    title = title.substring(0, 50) + '...';
+                }
+                return title;
+            }
+        }
+
+        return null;
+    }
+
+    generateAnchor(title) {
+        // 生成 Markdown 錨點連結
+        return title
+            .toLowerCase()
+            .replace(/[^\w\u4e00-\u9fff\s-]/g, '') // 保留中文、英文、數字、空格、連字號
+            .replace(/\s+/g, '-') // 空格轉連字號
+            .replace(/-+/g, '-') // 多個連字號合併
+            .replace(/^-|-$/g, ''); // 移除開頭和結尾的連字號
+    }
+
+    structureChapterContent(markdown) {
+        // 結構化章節內容，改善層級
+        let content = markdown;
+
+        // 將原本的 h1 降級為 h3，h2 降級為 h4，以此類推
+        content = content.replace(/^######\s+(.+)$/gm, '######### $1'); // h6 -> h9
+        content = content.replace(/^#####\s+(.+)$/gm, '######## $1');  // h5 -> h8
+        content = content.replace(/^####\s+(.+)$/gm, '####### $1');   // h4 -> h7
+        content = content.replace(/^###\s+(.+)$/gm, '###### $1');    // h3 -> h6
+        content = content.replace(/^##\s+(.+)$/gm, '##### $1');     // h2 -> h5
+        content = content.replace(/^#\s+(.+)$/gm, '#### $1');       // h1 -> h4
+
+        // 然後將過深的標題調整回合理範圍
+        content = content.replace(/^#{7,}\s+(.+)$/gm, '###### $1'); // h7+ -> h6
+
+        // 改善段落結構
+        const lines = content.split('\n');
+        const structuredLines = [];
+        let inList = false;
+        let listLevel = 0;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trim();
+
+            // 處理列表縮排
+            if (trimmedLine.match(/^[-*+]\s+/) || trimmedLine.match(/^\d+\.\s+/)) {
+                if (!inList) {
+                    inList = true;
+                    listLevel = 0;
+                }
+                structuredLines.push(line);
+            } else if (trimmedLine === '' && inList) {
+                // 列表中的空行
+                structuredLines.push(line);
+            } else {
+                if (inList && trimmedLine !== '') {
+                    inList = false;
+                    structuredLines.push(''); // 列表後添加空行
+                }
+                structuredLines.push(line);
+            }
+        }
+
+        return structuredLines.join('\n');
+    }
+
+    decodeHtmlEntities(text) {
+        const entities = {
+            '&nbsp;': ' ',
+            '&amp;': '&',
+            '&lt;': '<',
+            '&gt;': '>',
+            '&quot;': '"',
+            '&#39;': "'",
+            '&apos;': "'",
+            '&hellip;': '…',
+            '&mdash;': '—',
+            '&ndash;': '–',
+            '&ldquo;': '"',
+            '&rdquo;': '"',
+            '&lsquo;': ''',
+            '&rsquo;': '''
+        };
+
+        let result = text;
+        for (const [entity, char] of Object.entries(entities)) {
+            result = result.replace(new RegExp(entity, 'g'), char);
+        }
+
+        // 處理數字實體
+        result = result.replace(/&#(\d+);/g, (match, num) => {
+            return String.fromCharCode(parseInt(num, 10));
+        });
+
+        return result;
+    }
+
     htmlToMarkdown(html) {
-        // 簡單的 HTML 到 Markdown 轉換
+        // 進階的 HTML 到 Markdown 轉換
         let markdown = html;
 
-        // 移除 HTML 標籤但保留內容
+        // 移除不需要的標籤
         markdown = markdown.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
         markdown = markdown.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
         markdown = markdown.replace(/<!--[\s\S]*?-->/g, '');
+        markdown = markdown.replace(/<meta[^>]*>/gi, '');
+        markdown = markdown.replace(/<link[^>]*>/gi, '');
 
-        // 轉換標題
-        markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n');
-        markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n');
-        markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n');
-        markdown = markdown.replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n\n');
-        markdown = markdown.replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n\n');
-        markdown = markdown.replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n\n');
+        // 處理特殊區塊（保留結構）
+        markdown = markdown.replace(/<div[^>]*class="[^"]*chapter[^"]*"[^>]*>([\s\S]*?)<\/div>/gi, '\n\n$1\n\n');
+        markdown = markdown.replace(/<section[^>]*>([\s\S]*?)<\/section>/gi, '\n\n$1\n\n');
+        markdown = markdown.replace(/<article[^>]*>([\s\S]*?)<\/article>/gi, '\n\n$1\n\n');
 
-        // 轉換段落
-        markdown = markdown.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
+        // 轉換標題（保持原有層級）
+        markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '').trim();
+            return cleanContent ? `# ${cleanContent}\n\n` : '';
+        });
+        markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '').trim();
+            return cleanContent ? `## ${cleanContent}\n\n` : '';
+        });
+        markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '').trim();
+            return cleanContent ? `### ${cleanContent}\n\n` : '';
+        });
+        markdown = markdown.replace(/<h4[^>]*>(.*?)<\/h4>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '').trim();
+            return cleanContent ? `#### ${cleanContent}\n\n` : '';
+        });
+        markdown = markdown.replace(/<h5[^>]*>(.*?)<\/h5>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '').trim();
+            return cleanContent ? `##### ${cleanContent}\n\n` : '';
+        });
+        markdown = markdown.replace(/<h6[^>]*>(.*?)<\/h6>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '').trim();
+            return cleanContent ? `###### ${cleanContent}\n\n` : '';
+        });
+
+        // 轉換段落（保持段落結構）
+        markdown = markdown.replace(/<p[^>]*>(.*?)<\/p>/gi, (match, content) => {
+            const cleanContent = content.replace(/<br\s*\/?>/gi, '\n').trim();
+            return cleanContent ? `${cleanContent}\n\n` : '\n';
+        });
 
         // 轉換換行
-        markdown = markdown.replace(/<br\s*\/?>/gi, '\n');
+        markdown = markdown.replace(/<br\s*\/?>/gi, '  \n'); // Markdown 軟換行
 
-        // 轉換粗體和斜體
+        // 轉換格式化文字
         markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**');
         markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**');
         markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*');
         markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*');
+        markdown = markdown.replace(/<u[^>]*>(.*?)<\/u>/gi, '<u>$1</u>'); // 保留下劃線
+        markdown = markdown.replace(/<mark[^>]*>(.*?)<\/mark>/gi, '==$1=='); // 高亮
 
         // 轉換連結
-        markdown = markdown.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)');
+        markdown = markdown.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, (match, href, text) => {
+            const cleanText = text.replace(/<[^>]+>/g, '').trim();
+            return cleanText ? `[${cleanText}](${href})` : '';
+        });
 
         // 轉換圖片
-        markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, '![$2]($1)');
-        markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '![]($1)');
+        markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, '![$2]($1)\n\n');
+        markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '![]($1)\n\n');
 
-        // 轉換列表
+        // 轉換列表（改善縮排）
         markdown = markdown.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (match, content) => {
-            return content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
+            const items = content.match(/<li[^>]*>([\s\S]*?)<\/li>/gi);
+            if (!items) return '';
+
+            const listItems = items.map(item => {
+                const cleanItem = item.replace(/<\/?li[^>]*>/gi, '').replace(/<[^>]+>/g, '').trim();
+                return cleanItem ? `- ${cleanItem}` : '';
+            }).filter(item => item);
+
+            return listItems.length > 0 ? `\n${listItems.join('\n')}\n\n` : '';
         });
 
         markdown = markdown.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (match, content) => {
-            let counter = 1;
-            return content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => {
-                return `${counter++}. $1\n`;
-            });
+            const items = content.match(/<li[^>]*>([\s\S]*?)<\/li>/gi);
+            if (!items) return '';
+
+            const listItems = items.map((item, index) => {
+                const cleanItem = item.replace(/<\/?li[^>]*>/gi, '').replace(/<[^>]+>/g, '').trim();
+                return cleanItem ? `${index + 1}. ${cleanItem}` : '';
+            }).filter(item => item);
+
+            return listItems.length > 0 ? `\n${listItems.join('\n')}\n\n` : '';
         });
 
         // 轉換引用
-        markdown = markdown.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n\n');
+        markdown = markdown.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '').trim();
+            const lines = cleanContent.split('\n').map(line => `> ${line.trim()}`).join('\n');
+            return lines ? `\n${lines}\n\n` : '';
+        });
 
         // 轉換代碼
-        markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
-        markdown = markdown.replace(/<pre[^>]*>(.*?)<\/pre>/gi, '```\n$1\n```\n\n');
+        markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '');
+            return `\`${cleanContent}\``;
+        });
+        markdown = markdown.replace(/<pre[^>]*>(.*?)<\/pre>/gi, (match, content) => {
+            const cleanContent = content.replace(/<[^>]+>/g, '');
+            return `\n\`\`\`\n${cleanContent}\n\`\`\`\n\n`;
+        });
+
+        // 轉換表格（基本支援）
+        markdown = markdown.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (match, content) => {
+            // 簡化的表格轉換
+            const rows = content.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+            if (!rows) return '';
+
+            const tableRows = rows.map(row => {
+                const cells = row.match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi);
+                if (!cells) return '';
+
+                const cellContents = cells.map(cell => {
+                    return cell.replace(/<[^>]+>/g, '').trim();
+                });
+
+                return `| ${cellContents.join(' | ')} |`;
+            });
+
+            if (tableRows.length > 0) {
+                // 添加表格分隔線
+                const headerSeparator = `| ${tableRows[0].split('|').slice(1, -1).map(() => '---').join(' | ')} |`;
+                return `\n${tableRows[0]}\n${headerSeparator}\n${tableRows.slice(1).join('\n')}\n\n`;
+            }
+
+            return '';
+        });
+
+        // 處理分隔線
+        markdown = markdown.replace(/<hr[^>]*>/gi, '\n---\n\n');
 
         // 移除剩餘的 HTML 標籤
         markdown = markdown.replace(/<[^>]+>/g, '');
 
         // 解碼 HTML 實體
-        markdown = markdown.replace(/&nbsp;/g, ' ');
-        markdown = markdown.replace(/&amp;/g, '&');
-        markdown = markdown.replace(/&lt;/g, '<');
-        markdown = markdown.replace(/&gt;/g, '>');
-        markdown = markdown.replace(/&quot;/g, '"');
-        markdown = markdown.replace(/&#39;/g, "'");
+        markdown = this.decodeHtmlEntities(markdown);
 
-        // 清理多餘的空行
-        markdown = markdown.replace(/\n\s*\n\s*\n/g, '\n\n');
+        // 清理格式
+        markdown = markdown.replace(/\n\s*\n\s*\n/g, '\n\n'); // 移除多餘空行
+        markdown = markdown.replace(/^\s+|\s+$/gm, ''); // 移除行首行尾空格
+        markdown = markdown.replace(/\n{3,}/g, '\n\n'); // 限制最多兩個連續換行
         markdown = markdown.trim();
 
         return markdown;
