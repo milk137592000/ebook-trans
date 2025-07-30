@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPUB 轉換器 - 網頁版</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <!-- 標題區域 -->
+        <header class="header">
+            <div class="title-section">
+                <h1 class="title">📚 EPUB 轉換器</h1>
+                <p class="subtitle">將 EPUB 檔案從直式轉換為橫式，簡體轉正體，並更改為微軟正黑體</p>
+                <p class="flow-description">步驟：選擇檔案 → 設定格式 → 開始轉換</p>
+            </div>
+        </header>
+
+        <!-- 主要內容區域 -->
+        <main class="main-content">
+            <!-- 步驟 1: 檔案選擇 -->
+            <section class="step-section" id="step1">
+                <h2 class="step-title">📁 步驟 1: 選擇 EPUB 檔案</h2>
+                
+                <div class="file-upload-area" id="dropZone">
+                    <div class="upload-content">
+                        <div class="upload-icon">📚</div>
+                        <p class="upload-text">拖放 EPUB 檔案到這裡</p>
+                        <p class="upload-subtext">或</p>
+                        <button class="upload-button" id="fileSelectBtn">選擇 EPUB 檔案</button>
+                        <input type="file" id="fileInput" accept=".epub" style="display: none;">
+                    </div>
+                </div>
+
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <div class="file-details">
+                        <span class="file-icon">📖</span>
+                        <div class="file-text">
+                            <div class="file-name" id="fileName"></div>
+                            <div class="file-size" id="fileSize"></div>
+                        </div>
+                        <button class="change-file-btn" id="changeFileBtn">更換檔案</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 步驟 2: 設定參數 -->
+            <section class="step-section" id="step2">
+                <h2 class="step-title">⚙️ 步驟 2: 選擇輸出格式和行距</h2>
+                
+                <div class="settings-grid">
+                    <div class="setting-group">
+                        <label class="setting-label">輸出格式：</label>
+                        <div class="format-buttons">
+                            <button class="format-btn active" data-format="epub">EPUB</button>
+                            <button class="format-btn" data-format="mobi">MOBI</button>
+                            <button class="format-btn" data-format="pdf">PDF</button>
+                        </div>
+                        <p class="format-note">MOBI 和 PDF 格式需要後端處理</p>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="setting-label">行距：</label>
+                        <select class="line-height-select" id="lineHeightSelect">
+                            <option value="1.0">緊密 (1.0)</option>
+                            <option value="1.2" selected>標準 (1.2)</option>
+                            <option value="1.5">寬鬆 (1.5)</option>
+                            <option value="1.8">很寬鬆 (1.8)</option>
+                            <option value="2.0">雙倍 (2.0)</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 步驟 3: 開始轉換 -->
+            <section class="step-section" id="step3">
+                <h2 class="step-title">🚀 步驟 3: 開始轉換</h2>
+                
+                <div class="conversion-area">
+                    <button class="convert-button" id="convertBtn" disabled>
+                        <span class="convert-text">開始轉換</span>
+                        <span class="convert-icon">▶️</span>
+                    </button>
+                    
+                    <div class="progress-section" id="progressSection" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <p class="progress-text" id="progressText">準備轉換...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 狀態顯示 -->
+            <section class="status-section">
+                <div class="status-display" id="statusDisplay">
+                    <p class="status-text" id="statusText">請先選擇 EPUB 檔案</p>
+                </div>
+            </section>
+
+            <!-- 結果區域 -->
+            <section class="result-section" id="resultSection" style="display: none;">
+                <h2 class="step-title">✅ 轉換完成</h2>
+                
+                <div class="result-content">
+                    <div class="result-file">
+                        <span class="result-icon">📚</span>
+                        <div class="result-details">
+                            <div class="result-name" id="resultFileName"></div>
+                            <div class="result-info" id="resultInfo"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="result-actions">
+                        <button class="download-btn" id="downloadBtn">
+                            <span>📥 下載檔案</span>
+                        </button>
+                        <button class="new-conversion-btn" id="newConversionBtn">
+                            <span>🔄 轉換新檔案</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 功能說明 -->
+        <footer class="footer">
+            <div class="features-info">
+                <p class="features-text">
+                    轉換功能：直式→橫式 | 簡體→正體 | 字體→微軟正黑體 | 自訂行距 | 多格式輸出
+                </p>
+                <p class="tech-info">
+                    網頁版使用 JavaScript 進行客戶端處理，保護您的隱私
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 載入必要的 JavaScript 庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/opencc-js/1.0.5/opencc.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
