@@ -44,9 +44,18 @@ class EpubConverter {
 
     bindEvents() {
         // 檔案選擇事件
-        this.fileSelectBtn.addEventListener('click', () => this.fileInput.click());
-        this.changeFileBtn.addEventListener('click', () => this.fileInput.click());
-        this.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        this.fileSelectBtn.addEventListener('click', () => {
+            console.log('🖱️ 檔案選擇按鈕被點擊');
+            this.fileInput.click();
+        });
+        this.changeFileBtn.addEventListener('click', () => {
+            console.log('🖱️ 更換檔案按鈕被點擊');
+            this.fileInput.click();
+        });
+        this.fileInput.addEventListener('change', (e) => {
+            console.log('📁 檔案輸入變更事件觸發');
+            this.handleFileSelect(e);
+        });
 
         // 拖放事件
         this.dropZone.addEventListener('dragover', (e) => this.handleDragOver(e));
@@ -1292,7 +1301,28 @@ p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
 
 // 當頁面載入完成時初始化轉換器
 document.addEventListener('DOMContentLoaded', () => {
-    new EpubConverter();
+    console.log('🚀 頁面載入完成，初始化 EPUB 轉換器...');
+    try {
+        const converter = new EpubConverter();
+        console.log('✅ EPUB 轉換器初始化成功');
+
+        // 檢查關鍵元素是否存在
+        const fileInput = document.getElementById('fileInput');
+        const fileSelectBtn = document.getElementById('fileSelectBtn');
+        const dropZone = document.getElementById('dropZone');
+
+        console.log('🔍 元素檢查:');
+        console.log('- fileInput:', fileInput ? '✅' : '❌');
+        console.log('- fileSelectBtn:', fileSelectBtn ? '✅' : '❌');
+        console.log('- dropZone:', dropZone ? '✅' : '❌');
+
+        if (!fileInput || !fileSelectBtn || !dropZone) {
+            console.error('❌ 關鍵元素缺失，檔案選擇功能可能無法正常運作');
+        }
+    } catch (error) {
+        console.error('❌ EPUB 轉換器初始化失敗:', error);
+        alert(`初始化失敗: ${error.message}`);
+    }
 });
 
 // 添加一些實用的全域函數
@@ -1302,6 +1332,7 @@ window.EpubConverterUtils = {
         const features = {
             fileAPI: !!(window.File && window.FileReader && window.FileList && window.Blob),
             jszip: typeof JSZip !== 'undefined',
+            pdfjs: typeof pdfjsLib !== 'undefined',
             dragDrop: 'draggable' in document.createElement('span')
         };
 
@@ -1311,6 +1342,7 @@ window.EpubConverterUtils = {
 
         if (unsupported.length > 0) {
             console.warn('不支援的功能:', unsupported);
+            console.log('功能檢查結果:', features);
             return false;
         }
 

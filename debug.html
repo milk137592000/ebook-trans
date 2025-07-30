@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>檔案選擇測試</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 檔案選擇功能測試</h1>
+    
+    <div class="test-section">
+        <h2>測試 1: 基本檔案選擇</h2>
+        <input type="file" id="basicFileInput" accept=".epub,.pdf">
+        <div class="result" id="basicResult">等待選擇檔案...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>測試 2: 隱藏檔案輸入 + 按鈕觸發</h2>
+        <button id="hiddenFileBtn">選擇檔案</button>
+        <input type="file" id="hiddenFileInput" accept=".epub,.pdf" style="display: none;">
+        <div class="result" id="hiddenResult">等待選擇檔案...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>測試 3: 拖放功能</h2>
+        <div id="dropArea" style="border: 2px dashed #ccc; padding: 40px; text-align: center; cursor: pointer;">
+            拖放檔案到這裡
+        </div>
+        <div class="result" id="dropResult">等待拖放檔案...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>測試 4: JavaScript 錯誤檢查</h2>
+        <button id="errorCheckBtn">檢查 JavaScript 環境</button>
+        <div class="result" id="errorResult">點擊按鈕檢查...</div>
+    </div>
+
+    <script>
+        console.log('🔍 開始檔案選擇測試...');
+        
+        // 測試 1: 基本檔案選擇
+        document.getElementById('basicFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const result = document.getElementById('basicResult');
+            if (file) {
+                result.innerHTML = `✅ 選擇成功: ${file.name} (${file.size} bytes)`;
+                result.style.background = '#d4edda';
+            } else {
+                result.innerHTML = '❌ 沒有選擇檔案';
+                result.style.background = '#f8d7da';
+            }
+        });
+        
+        // 測試 2: 隱藏檔案輸入
+        document.getElementById('hiddenFileBtn').addEventListener('click', function() {
+            console.log('🖱️ 按鈕被點擊');
+            document.getElementById('hiddenFileInput').click();
+        });
+        
+        document.getElementById('hiddenFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const result = document.getElementById('hiddenResult');
+            if (file) {
+                result.innerHTML = `✅ 隱藏輸入選擇成功: ${file.name} (${file.size} bytes)`;
+                result.style.background = '#d4edda';
+            } else {
+                result.innerHTML = '❌ 隱藏輸入沒有選擇檔案';
+                result.style.background = '#f8d7da';
+            }
+        });
+        
+        // 測試 3: 拖放功能
+        const dropArea = document.getElementById('dropArea');
+        const dropResult = document.getElementById('dropResult');
+        
+        dropArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropArea.style.background = '#e3f2fd';
+            dropArea.style.borderColor = '#2196f3';
+        });
+        
+        dropArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dropArea.style.background = '';
+            dropArea.style.borderColor = '#ccc';
+        });
+        
+        dropArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dropArea.style.background = '';
+            dropArea.style.borderColor = '#ccc';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                dropResult.innerHTML = `✅ 拖放成功: ${file.name} (${file.size} bytes)`;
+                dropResult.style.background = '#d4edda';
+            } else {
+                dropResult.innerHTML = '❌ 拖放失敗';
+                dropResult.style.background = '#f8d7da';
+            }
+        });
+        
+        // 測試 4: JavaScript 環境檢查
+        document.getElementById('errorCheckBtn').addEventListener('click', function() {
+            const result = document.getElementById('errorResult');
+            let checks = [];
+            
+            // 檢查基本 API
+            checks.push(`File API: ${!!(window.File && window.FileReader && window.FileList && window.Blob) ? '✅' : '❌'}`);
+            checks.push(`Drag & Drop: ${'draggable' in document.createElement('span') ? '✅' : '❌'}`);
+            checks.push(`JSZip: ${typeof JSZip !== 'undefined' ? '✅' : '❌'}`);
+            checks.push(`PDF.js: ${typeof pdfjsLib !== 'undefined' ? '✅' : '❌'}`);
+            checks.push(`OpenCC: ${typeof OpenCC !== 'undefined' ? '✅' : '❌'}`);
+            
+            result.innerHTML = checks.join('<br>');
+            result.style.background = '#fff3cd';
+        });
+        
+        // 全域錯誤監聽
+        window.addEventListener('error', function(e) {
+            console.error('❌ JavaScript 錯誤:', e.error);
+            alert(`JavaScript 錯誤: ${e.message}\n檔案: ${e.filename}\n行號: ${e.lineno}`);
+        });
+        
+        console.log('✅ 測試頁面載入完成');
+    </script>
+</body>
+</html>
