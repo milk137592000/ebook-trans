@@ -14,6 +14,8 @@ class EpubConverter {
     }
 
     initializeElements() {
+        console.log('🔧 開始初始化元素...');
+
         // 檔案選擇相關
         this.dropZone = document.getElementById('dropZone');
         this.fileInput = document.getElementById('fileInput');
@@ -22,6 +24,22 @@ class EpubConverter {
         this.fileName = document.getElementById('fileName');
         this.fileSize = document.getElementById('fileSize');
         this.changeFileBtn = document.getElementById('changeFileBtn');
+
+        // 檢查關鍵元素
+        const criticalElements = {
+            dropZone: this.dropZone,
+            fileInput: this.fileInput,
+            fileSelectBtn: this.fileSelectBtn
+        };
+
+        for (const [name, element] of Object.entries(criticalElements)) {
+            if (!element) {
+                console.error(`❌ 找不到關鍵元素: ${name}`);
+                throw new Error(`找不到必要的元素: ${name}`);
+            } else {
+                console.log(`✅ 找到元素: ${name}`);
+            }
+        }
 
         // 設定相關
         this.formatBtns = document.querySelectorAll('.format-btn');
@@ -43,19 +61,40 @@ class EpubConverter {
     }
 
     bindEvents() {
-        // 檔案選擇事件
-        this.fileSelectBtn.addEventListener('click', () => {
-            console.log('🖱️ 檔案選擇按鈕被點擊');
-            this.fileInput.click();
-        });
-        this.changeFileBtn.addEventListener('click', () => {
-            console.log('🖱️ 更換檔案按鈕被點擊');
-            this.fileInput.click();
-        });
-        this.fileInput.addEventListener('change', (e) => {
-            console.log('📁 檔案輸入變更事件觸發');
-            this.handleFileSelect(e);
-        });
+        console.log('🔗 開始綁定事件...');
+
+        // 檔案選擇事件 - 使用更可靠的綁定方法
+        if (this.fileSelectBtn) {
+            this.fileSelectBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('🖱️ 檔案選擇按鈕被點擊');
+                try {
+                    this.fileInput.click();
+                    console.log('✅ 檔案輸入觸發成功');
+                } catch (error) {
+                    console.error('❌ 檔案輸入觸發失敗:', error);
+                    this.showAlert('錯誤', '無法開啟檔案選擇對話框');
+                }
+            });
+            console.log('✅ 檔案選擇按鈕事件綁定成功');
+        }
+
+        if (this.changeFileBtn) {
+            this.changeFileBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('🖱️ 更換檔案按鈕被點擊');
+                this.fileInput.click();
+            });
+            console.log('✅ 更換檔案按鈕事件綁定成功');
+        }
+
+        if (this.fileInput) {
+            this.fileInput.addEventListener('change', (e) => {
+                console.log('📁 檔案輸入變更事件觸發，檔案數量:', e.target.files.length);
+                this.handleFileSelect(e);
+            });
+            console.log('✅ 檔案輸入變更事件綁定成功');
+        }
 
         // 拖放事件
         this.dropZone.addEventListener('dragover', (e) => this.handleDragOver(e));
@@ -161,6 +200,48 @@ class EpubConverter {
         // 設定 PDF.js worker
         if (typeof pdfjsLib !== 'undefined') {
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
+        // 添加備用檔案選擇方法
+        this.addFallbackFileSelection();
+    }
+
+    addFallbackFileSelection() {
+        // 如果主要方法失敗，提供備用方法
+        if (this.fileSelectBtn) {
+            // 雙重保險：同時使用 onclick 屬性
+            this.fileSelectBtn.onclick = () => {
+                console.log('🔄 使用備用方法觸發檔案選擇');
+                this.triggerFileSelection();
+            };
+        }
+    }
+
+    triggerFileSelection() {
+        try {
+            // 方法 1: 直接觸發
+            if (this.fileInput) {
+                this.fileInput.click();
+                return;
+            }
+
+            // 方法 2: 創建新的檔案輸入
+            const newInput = document.createElement('input');
+            newInput.type = 'file';
+            newInput.accept = '.epub,.pdf';
+            newInput.style.display = 'none';
+
+            newInput.addEventListener('change', (e) => {
+                this.handleFileSelect(e);
+                document.body.removeChild(newInput);
+            });
+
+            document.body.appendChild(newInput);
+            newInput.click();
+
+        } catch (error) {
+            console.error('❌ 所有檔案選擇方法都失敗:', error);
+            this.showAlert('錯誤', '無法開啟檔案選擇對話框，請嘗試重新整理頁面');
         }
     }
 
